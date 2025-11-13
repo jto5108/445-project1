@@ -1,29 +1,58 @@
-# get_video_id.py
-import os, csv
-from dotenv import load_dotenv
 from googleapiclient.discovery import build
+from dotenv import load_dotenv
+import pandas as pd
+import os
+import sys
 
-def collect_video_ids(query="technology", max_results=50, output_csv="data/video_ids.csv"):
+def collect_video_ids(query="Rainbow 6 Siege Rocket League", max_videos=3000):
+    # Load API key from .env or environment variable
     load_dotenv()
-    api_key = os.getenv("YOUTUBE_API_KEY")
-    if not api_key:
-        raise ValueError("YouTube API key missing. Set YOUTUBE_API_KEY in your environment or .env file.")
-    
-    os.makedirs("data", exist_ok=True)
-    youtube = build("youtube", "v3", developerKey=api_key)
+    youtube_api_key = os.getenv("API_KEY")
 
-    request = youtube.search().list(q=query, part="id", type="video", maxResults=min(max_results, 50))
-    response = request.execute()
+    # Check for missing API key
+    if not youtube_api_key:
+        print("ERROR: No API key found.")
+        print("→ Please set your key using:")
+        print('   export API_KEY="YOUR_API_KEY_HERE"')
+        print("or add it to a .env file like:")
+        print("   API_KEY=YOUR_API_KEY_HERE")
+        sys.exit(1)
 
-    ids = [item["id"]["videoId"] for item in response.get("items", []) if "videoId" in item["id"]]
-    with open(output_csv, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["video_id"])
-        for vid in ids:
-            writer.writerow([vid])
+    # Initialize YouTube API client
+    api = build("youtube", "v3", developerKey=youtube_api_key)
+    print(f"✅ Connected to YouTube API using key: {youtube_api_key[:6]}...")
 
-    print(f"Saved {len(ids)} video IDs to {output_csv}")
-    return ids
+    videos = []
+    next_page = None
+
+    print(f"Searching for videos related to '{query}'...")
+
+    # Loop until we reach the limit or run out of pages
+    while True:
+        res = api.search().list(
+            part="id",
+            q=query,
+            type="video",
+            maxResults=50,
+            pageToken=next_page
+        ).execute()
+
+        for item in res["items"]:
+            videos.append(item["id"]["videoId"])
+
+        next_page = res.get("nextPageToken")
+        if not next_page or len(videos) >= max_videos:
+            break
+
+    print(f"✅ Found {len(videos)} video IDs for query: '{query}'")
+
+    # Convert to DataFrame and save
+    df = pd.DataFrame(videos, columns=["video_id"])
+    csv_path = "Video_Ids.csv"
+    df.to_csv(csv_path, index=False)
+    print(f"✅ Saved video IDs → {csv_path}")
+
+    return df
 
 if __name__ == "__main__":
-    collect_video_ids("technology", 20)
+    collect_video_ids()
